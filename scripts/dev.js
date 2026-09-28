@@ -15,7 +15,7 @@ console.log('\x1b[36m%s\x1b[0m', '   REPLICATE.AI — Autonomous Reconstruction 
 console.log('\x1b[36m%s\x1b[0m', '=====================================================');
 console.log('\x1b[32m%s\x1b[0m', '[1/2] Starting FastAPI Agent Orchestration Backend on http://127.0.0.1:8000 ...');
 
-const backend = spawn(`"${pythonExe}"`, ['-m', 'uvicorn', 'backend.app.main:app', '--host', '0.0.0.0', '--port', '8000', '--reload'], {
+const backend = spawn(`"${pythonExe}"`, ['-m', 'uvicorn', 'backend.app.main:app', '--host', '0.0.0.0', '--port', '8000', '--reload', '--loop', 'none'], {
   cwd: rootDir,
   shell: true,
   stdio: 'inherit',

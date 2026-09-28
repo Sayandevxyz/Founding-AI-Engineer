@@ -1,6 +1,19 @@
 """Replicate.AI FastAPI Backend Application."""
 import os
+import sys
+import asyncio
 from dotenv import load_dotenv
+
+# Enforce Windows ProactorEventLoop for Playwright Chromium subprocesses
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    try:
+        import uvicorn.loops.asyncio
+        uvicorn.loops.asyncio.asyncio_setup = lambda use_subprocess=False: asyncio.set_event_loop_policy(
+            asyncio.WindowsProactorEventLoopPolicy()
+        )
+    except Exception:
+        pass
 
 # Load .env file if present
 load_dotenv()
