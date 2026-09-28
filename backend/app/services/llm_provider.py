@@ -3,6 +3,9 @@ import os
 import json
 import time
 import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
 from typing import Dict, Any, Optional, List, Tuple
 from backend.app.schemas.website_spec import WebsiteSpec
 from backend.app.schemas.project import ModificationPlan, ValidationResult
