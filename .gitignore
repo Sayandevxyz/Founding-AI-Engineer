@@ -1,0 +1,36 @@
+# Node & Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+backend/venv/
+backend/.venv/
+venv/
+.venv/
+.pytest_cache/
+
+# Databases & Local state
+*.db
+*.sqlite3
+*.log
+
+# Generated cloned projects & temporary snapshots
+generated/projects/*
+!generated/projects/.gitkeep
+generated/snapshots/*
+!generated/snapshots/.gitkeep
+screenshots/*.png
+!screenshots/.gitkeep
+
+# Environment secrets
+.env
+.env.local
+.env.production

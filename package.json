@@ -1,0 +1,16 @@
+{
+  "name": "replicate-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Replicate.AI - AI-Powered Frontend Website Cloning Agent",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "dev:dashboard": "cd apps/dashboard && npm run dev",
+    "dev:backend": "powershell -ExecutionPolicy Bypass -Command \"backend\\venv\\Scripts\\python.exe -m uvicorn app.main:app --app-dir backend --reload --port 8000\"",
+    "build": "cd apps/dashboard && npm run build",
+    "test": "node scripts/run-tests.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
