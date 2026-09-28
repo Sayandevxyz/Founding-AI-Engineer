@@ -28,7 +28,20 @@ class ValidatorAgent:
         error_logs: List[str] = []
 
         node_modules = os.path.join(project_dir, "node_modules")
-        # Step 1: Install dependencies if needed
+        # Step 1: Install dependencies if needed (try linking first for speed)
+        if not os.path.exists(node_modules):
+            projects_root = os.path.abspath(os.path.join("generated", "projects"))
+            if os.path.exists(projects_root):
+                for p in os.listdir(projects_root):
+                    c = os.path.join(projects_root, p, "node_modules")
+                    if os.path.exists(c) and os.path.abspath(c) != os.path.abspath(node_modules):
+                        try:
+                            subprocess.run(["cmd", "/c", "mklink", "/J", node_modules, c], capture_output=True)
+                            if os.path.exists(node_modules):
+                                break
+                        except Exception:
+                            pass
+
         if not os.path.exists(node_modules):
             try:
                 proc = await asyncio.create_subprocess_shell(

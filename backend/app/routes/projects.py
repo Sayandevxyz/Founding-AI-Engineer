@@ -1,5 +1,6 @@
 """API Endpoints for Project lifecycle, analysis, generation, modification, and streaming."""
 import json
+import os
 import uuid
 import asyncio
 from typing import List, Dict, Any
@@ -159,12 +160,19 @@ async def sse_events(project_id: str):
 
 @router.get("/{project_id}/preview")
 async def get_preview_info(project_id: str, db: Session = Depends(get_db)):
-    """Retrieve preview server URL and active port."""
+    """Retrieve preview server URL and active port, dynamically reviving if inactive."""
     p = db.query(ProjectModel).filter(ProjectModel.id == project_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Project not found.")
 
     port = p.preview_port
+    if p.generated_path and os.path.exists(p.generated_path):
+        active_port = await preview_manager.ensure_preview_running(project_id, p.generated_path, preferred_port=port)
+        if active_port != p.preview_port:
+            p.preview_port = active_port
+            db.commit()
+        port = active_port
+
     url = f"http://localhost:{port}" if port else None
     return {
         "projectId": project_id,

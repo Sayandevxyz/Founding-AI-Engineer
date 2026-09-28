@@ -49,6 +49,24 @@ export default function ProjectDetailView({ project, onRefresh }: ProjectDetailP
 
   // Rollback state
   const [isRollingBack, setIsRollingBack] = useState(false);
+  const [livePreviewUrl, setLivePreviewUrl] = useState<string | null>(null);
+  const [isPreviewWarming, setIsPreviewWarming] = useState(false);
+
+  // Auto-revive preview server on tab load or frame refresh
+  useEffect(() => {
+    if (activeTab === "preview" && project?.id) {
+      setIsPreviewWarming(true);
+      fetch(`/api/projects/${project.id}/preview`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.previewUrl) {
+            setLivePreviewUrl(data.previewUrl);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setIsPreviewWarming(false));
+    }
+  }, [activeTab, project?.id, previewKey]);
 
   // Load code file
   useEffect(() => {
@@ -121,7 +139,7 @@ export default function ProjectDetailView({ project, onRefresh }: ProjectDetailP
     }
   };
 
-  const previewUrl = project?.preview_url || (project?.preview_port ? `http://localhost:${project.preview_port}` : null);
+  const previewUrl = livePreviewUrl || project?.preview_url || (project?.preview_port ? `http://localhost:${project.preview_port}` : null);
   const similarityScore = project?.validation_result?.visualSimilarityScore || 88.5;
   const stats = project?.stats || {};
 
