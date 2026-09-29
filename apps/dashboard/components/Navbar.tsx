@@ -7,10 +7,16 @@ export default function DashboardNavbar() {
   const [backendHealth, setBackendHealth] = useState<boolean | null>(null);
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((res) => res.json())
-      .then((data) => setBackendHealth(data.status === "ok"))
-      .catch(() => setBackendHealth(false));
+    const checkHealth = () => {
+      fetch("/api/health")
+        .then((res) => (res.ok ? res.json() : Promise.reject()))
+        .then((data) => setBackendHealth(data.status === "ok"))
+        .catch(() => setBackendHealth(false));
+    };
+
+    checkHealth();
+    const interval = setInterval(checkHealth, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -38,7 +44,9 @@ export default function DashboardNavbar() {
             <div className="hidden md:flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800">
               <span className={`h-2 w-2 rounded-full ${backendHealth ? "bg-emerald-500 animate-pulse" : backendHealth === false ? "bg-red-500" : "bg-amber-500"}`} />
               <span className="text-slate-400">Agent Core:</span>
-              <span className="font-mono text-slate-200">{backendHealth ? "Online (Port 8000)" : "Connecting..."}</span>
+              <span className="font-mono text-slate-200">
+                {backendHealth === true ? "Online (Port 8000)" : backendHealth === false ? "Offline (Port 8000)" : "Connecting..."}
+              </span>
             </div>
 
             <div className="flex items-center gap-2 text-xs">

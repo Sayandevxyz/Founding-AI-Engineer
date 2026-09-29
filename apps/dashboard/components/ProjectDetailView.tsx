@@ -99,8 +99,15 @@ export default function ProjectDetailView({ project, onRefresh }: ProjectDetailP
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || "Failed to apply modification.");
+        let errDetail = "Failed to apply modification.";
+        try {
+          const err = await res.json();
+          errDetail = err.detail || errDetail;
+        } catch {
+          const text = await res.text().catch(() => "");
+          if (text) errDetail = text;
+        }
+        throw new Error(errDetail);
       }
 
       const updated = await res.json();
@@ -297,11 +304,44 @@ export default function ProjectDetailView({ project, onRefresh }: ProjectDetailP
                   className="w-full flex-grow border-0 bg-white"
                 />
               </div>
+            ) : isPreviewWarming ? (
+              <div className="flex flex-col items-center justify-center text-slate-400 p-12 space-y-4">
+                <div className="h-8 w-8 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                <p className="text-sm font-semibold text-slate-300">Warming up local preview server...</p>
+                <p className="text-xs text-slate-500">Launching Vite preview container on localhost:{project.preview_port || 3001}...</p>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center text-slate-500 p-12 space-y-3">
                 <AlertTriangle className="h-8 w-8 text-amber-500" />
-                <p className="text-sm font-semibold text-slate-300">Preview server not currently running</p>
-                <p className="text-xs text-slate-500">Run reconstruction or click Re-validate to start local server.</p>
+                <p className="text-sm font-semibold text-slate-300">
+                  {project.status === "INITIALIZED"
+                    ? "Reconstruction has not been completed for this project"
+                    : project.status === "FAILED"
+                    ? "Reconstruction failed for this project"
+                    : "Preview server not currently running"}
+                </p>
+                <p className="text-xs text-slate-500 text-center max-w-sm">
+                  {project.status === "READY"
+                    ? "The preview server may be stopped. Click below to launch the local Vite preview."
+                    : "Paste a URL above to start autonomous reconstruction, or select an existing completed project below."}
+                </p>
+                {project.status === "READY" && (
+                  <button
+                    onClick={() => {
+                      setIsPreviewWarming(true);
+                      fetch(`/api/projects/${project.id}/preview`)
+                        .then((res) => res.json())
+                        .then((data) => {
+                          if (data.previewUrl) setLivePreviewUrl(data.previewUrl);
+                        })
+                        .catch(() => {})
+                        .finally(() => setIsPreviewWarming(false));
+                    }}
+                    className="mt-2 px-4 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors cursor-pointer"
+                  >
+                    Start Preview Server
+                  </button>
+                )}
               </div>
             )}
           </div>

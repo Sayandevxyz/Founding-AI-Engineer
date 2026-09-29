@@ -1,6 +1,7 @@
 """Asset Agent: Safely extracts, downloads, and manages media assets with crisp fallback placeholders."""
 import os
 import re
+import asyncio
 import httpx
 from typing import List, Dict, Any
 from urllib.parse import urlparse
@@ -31,24 +32,25 @@ class AssetAgent:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
         }
 
-        async with httpx.AsyncClient(timeout=self.timeout_secs, follow_redirects=True) as client:
-            for idx, img in enumerate(raw_images[:self.max_assets]):
-                src = img.get("url", "")
-                alt = img.get("alt", "") or f"Asset {idx + 1}"
-                if not src:
-                    continue
+        semaphore = asyncio.Semaphore(5)
 
-                asset_id = f"asset-{idx + 1}"
-                ext = self._guess_extension(src)
-                filename = f"{asset_id}{ext}"
-                local_fs_path = os.path.join(assets_dir, filename)
-                public_web_path = f"/assets/{filename}"
+        async def fetch_asset(idx: int, img: Dict[str, str], client: httpx.AsyncClient):
+            src = img.get("url", "")
+            alt = img.get("alt", "") or f"Asset {idx + 1}"
+            if not src:
+                return None
 
-                downloaded = False
+            asset_id = f"asset-{idx + 1}"
+            ext = self._guess_extension(src)
+            filename = f"{asset_id}{ext}"
+            local_fs_path = os.path.join(assets_dir, filename)
+            public_web_path = f"/assets/{filename}"
+
+            downloaded = False
+            async with semaphore:
                 try:
                     res = await client.get(src, headers=headers)
                     if res.status_code == 200 and len(res.content) > 100:
-                        # Limit individual asset size to 5MB to control costs/storage
                         if len(res.content) <= 5 * 1024 * 1024:
                             with open(local_fs_path, "wb") as f:
                                 f.write(res.content)
@@ -56,33 +58,35 @@ class AssetAgent:
                 except Exception:
                     downloaded = False
 
-                if not downloaded:
-                    # Generate an SVG placeholder
-                    filename = f"{asset_id}.svg"
-                    local_fs_path = os.path.join(assets_dir, filename)
-                    public_web_path = f"/assets/{filename}"
-                    self._create_svg_placeholder(local_fs_path, alt, width=800, height=500)
-                    manifest_items.append(
-                        AssetManifestItem(
-                            id=asset_id,
-                            sourceUrl=src,
-                            localPath=public_web_path,
-                            type="svg",
-                            alt=alt,
-                            status="placeholder",
-                        )
-                    )
-                else:
-                    manifest_items.append(
-                        AssetManifestItem(
-                            id=asset_id,
-                            sourceUrl=src,
-                            localPath=public_web_path,
-                            type="image" if ext != ".svg" else "svg",
-                            alt=alt,
-                            status="downloaded",
-                        )
-                    )
+            if not downloaded:
+                filename = f"{asset_id}.svg"
+                local_fs_path = os.path.join(assets_dir, filename)
+                public_web_path = f"/assets/{filename}"
+                self._create_svg_placeholder(local_fs_path, alt, width=800, height=500)
+                return AssetManifestItem(
+                    id=asset_id,
+                    sourceUrl=src,
+                    localPath=public_web_path,
+                    type="svg",
+                    alt=alt,
+                    status="placeholder",
+                )
+            else:
+                return AssetManifestItem(
+                    id=asset_id,
+                    sourceUrl=src,
+                    localPath=public_web_path,
+                    type="image" if ext != ".svg" else "svg",
+                    alt=alt,
+                    status="downloaded",
+                )
+
+        async with httpx.AsyncClient(timeout=4.0, follow_redirects=True) as client:
+            tasks = [fetch_asset(idx, img, client) for idx, img in enumerate(raw_images[:self.max_assets])]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for r in results:
+                if isinstance(r, AssetManifestItem):
+                    manifest_items.append(r)
 
         # Ensure we at least have a default hero visual asset
         if not manifest_items:

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from backend.app.models.database import get_db, ProjectModel, ProjectVersionModel
+from backend.app.models.database import get_db, ProjectModel, ProjectVersionModel, SessionLocal
 from backend.app.schemas.project import (
     ProjectCreateRequest,
     ProjectResponse,
@@ -82,21 +82,74 @@ async def get_project(project_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Project not found.")
 
 
+# Global registry of active background pipeline tasks
+active_pipeline_tasks: Dict[str, asyncio.Task] = {}
+
+
+async def _run_pipeline_background(project_id: str):
+    """Run pipeline in background with its own DB session to prevent HTTP proxy timeouts."""
+    try:
+        with SessionLocal() as bg_db:
+            orch = AgentOrchestrator(bg_db, preview_mgr=preview_manager)
+
+            async def callback(evt):
+                await broadcast_event(project_id, evt)
+
+            try:
+                await orch.execute_clone_pipeline(project_id, event_callback=callback)
+            except Exception:
+                pass
+    finally:
+        active_pipeline_tasks.pop(project_id, None)
+
+
 @router.post("/{project_id}/generate", response_model=ProjectResponse)
 async def generate_project_endpoint(
     project_id: str,
+    wait: bool = Query(False, description="Whether to wait for pipeline completion before returning"),
     db: Session = Depends(get_db)
 ):
-    """Execute complete autonomous reconstruction pipeline."""
+    """Execute complete autonomous reconstruction pipeline.
+    Runs asynchronously by default to avoid HTTP proxy socket hang-ups (ECONNRESET),
+    streaming real-time telemetry via SSE (/api/projects/{id}/events).
+    """
+    project = db.query(ProjectModel).filter(ProjectModel.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found.")
+
     orch = AgentOrchestrator(db, preview_mgr=preview_manager)
 
-    async def callback(evt):
-        await broadcast_event(project_id, evt)
+    # If already ready, return immediately
+    if project.status == "READY":
+        return orch.get_project_response(project_id)
 
-    try:
-        return await orch.execute_clone_pipeline(project_id, event_callback=callback)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # If already in an active running state, do not spawn duplicate pipeline
+    running_states = [
+        "DISCOVERING", "ANALYZING", "EXTRACTING_ASSETS",
+        "PLANNING", "GENERATING", "BUILDING", "REPAIRING"
+    ]
+    if project_id in active_pipeline_tasks or project.status in running_states:
+        if wait and project_id in active_pipeline_tasks:
+            try:
+                await active_pipeline_tasks[project_id]
+            except Exception:
+                pass
+            return orch.get_project_response(project_id)
+        return orch.get_project_response(project_id)
+
+    # Launch task
+    if wait:
+        async def callback(evt):
+            await broadcast_event(project_id, evt)
+
+        try:
+            return await orch.execute_clone_pipeline(project_id, event_callback=callback)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    else:
+        task = asyncio.create_task(_run_pipeline_background(project_id))
+        active_pipeline_tasks[project_id] = task
+        return orch.get_project_response(project_id)
 
 
 @router.post("/{project_id}/modify", response_model=ProjectResponse)
